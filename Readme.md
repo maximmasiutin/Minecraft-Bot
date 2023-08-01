@@ -8,7 +8,7 @@ This is a very simple bot that demonstrates the use of the mineflayer library.
 
 ## Watch Demos
 
- - Farming (plant/harvest wheat): https://youtu.be/cKtPVeuyzt0
+ - Farming (plant/harvest wheat): https://youtu.be/RVaNNiG96-M
  - Carpeting (fill surface with a white carpet): https://youtu.be/tKTukPgVf7Q
 
 ## Run The Bot
