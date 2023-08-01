@@ -12,9 +12,17 @@ This is a very simple bot that demonstrates the use of the mineflayer library.
  - Farming with obstacle avoidance: https://youtu.be/8u5v3z2hx2k
  - Carpeting (fill surface with a white carpet): https://youtu.be/tKTukPgVf7Q
 
+## Prerequisites
+
+```
+npm init
+npm install --save mineflayer
+npm install --save mineflayer-pathfinder
+```
+
 ## Run The Bot
 
- - node minecraft-bot.js <username> <server-version> <server-ip> <server-port>
+ - `node minecraft-bot.js <username> <server-version> <server-ip> <server-port>`
 
 ## Control The Bot
 
