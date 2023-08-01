@@ -10,12 +10,13 @@ This is a very simple bot that demonstrates the use of the mineflayer library.
 
 Watch demos:
 
- - Farming (plant/harvest wheat): https://youtu.be/RVaNNiG96-M
+ - Farming (plant/harvest wheat) on open terrain: https://youtu.be/RVaNNiG96-M
+ - Farming with obstacle avoidance: https://youtu.be/8u5v3z2hx2k
  - Carpeting (fill surface with a white carpet): https://youtu.be/tKTukPgVf7Q
 
 Run the bot:
 
- - node minecraft-bot.js <username> <server-version> <server-ip> <server-port>
+ - node minecraft-bot.js <username> <server-version> <server-ip> [server-port] [max-seek-distance]
 
 Control the bot:
 
@@ -30,11 +31,12 @@ Control the bot:
 
 'use strict'
 
-function main () {
+function main() {
   let ArgUsername = 'user'
   let ArgVersion = '1.16.5'
   let ArgHost = '127.0.0.1'
   let ArgPort = 25565
+  let ArgMaxSeekDistance = 70;
 
   const { Vec3 } = require('vec3')
   const mineflayer = require('mineflayer')
@@ -60,13 +62,15 @@ function main () {
   const CWaitForCropsToGrowTimeout = 10000
   const CWaitIdleTimeout = 3000
 
-  const CMaxDistance = 70
   const CWheatGrownMetadata = 7
 
   let bot = null
 
   let farmland_id = null
   let air_id = null
+  let cave_air_id = null
+  let void_air_id = null
+  let air_id_set = null
   let wheat_id = null
   let wheat_crop_id = null
   let wheat_seed_id = null
@@ -100,15 +104,20 @@ function main () {
     ArgPort = process.argv[5]
   }
 
+  if (process.argv.length > 6) {
+    ArgMaxSeekDistance = process.argv[6]
+  }
+
+
   createBotInstance()
 
-  function nowStr () {
+  function nowStr() {
     const nowDate = new Date()
     return nowDate.toISOString()
   }
 
-  function createBotInstance () {
-    console.log(nowStr(), 'Username', ArgUsername, 'Version', ArgVersion, 'Host', ArgHost, 'Port', ArgPort)
+  function createBotInstance() {
+    console.log(nowStr(), 'Username', ArgUsername, 'Version', ArgVersion, 'Host', ArgHost, 'Port', ArgPort, 'MaxSeekDistance', ArgMaxSeekDistance)
 
     try {
       bot = mineflayer.createBot({
@@ -130,18 +139,19 @@ function main () {
     bot.once('spawn', spawn)
   }
 
-  function bot_on_error (e) {
+  function bot_on_error(e) {
     console.log(nowStr(), 'bot_on_error', e)
   }
 
-  function bot_on_experience () {
+  function bot_on_experience() {
     bot.chat(`I am level ${bot.experience.level}`)
   }
 
-  function ConfigureMovements () {
+  function ConfigureMovements() {
     let defaultMovements = new Movements(bot)
     defaultMovements.allow1by1towers = false // Do not build 1x1 towers when going up
     defaultMovements.canDig = false // Disable breaking of blocks when pathing
+    defaultMovements.liquidCost = 50 // try to avoid liquid if possible, but if more than liquidCost to walk around, go over the liqud
     defaultMovements.allowFreeMotion = false
     defaultMovements.allowEntityDetection = false
     defaultMovements.carpets.add(wheat_crop_id)
@@ -150,9 +160,15 @@ function main () {
     bot.pathfinder.setMovements(defaultMovements) // Update the movement instance pathfinder uses
   }
 
-  function ConfigureIds () {
+  function ConfigureIds() {
     farmland_id = bot.registry.blocksByName.farmland.id
     air_id = bot.registry.blocksByName.air.id
+    cave_air_id = bot.registry.blocksByName.cave_air.id
+    void_air_id = bot.registry.blocksByName.void_air.id
+    air_id_set = new Set()
+    air_id_set.add(air_id)
+    air_id_set.add(cave_air_id)
+    air_id_set.add(void_air_id)
     wheat_crop_id = bot.registry.blocksByName.wheat.id
     wheat_seed_id = bot.registry.itemsByName.wheat_seeds.id
     wheat_id = bot.registry.itemsByName.wheat.id
@@ -164,19 +180,19 @@ function main () {
     cobblestone_id = bot.registry.itemsByName.cobblestone.id
   }
 
-  function ConfigureEvents () {
+  function ConfigureEvents() {
     bot.on('experience', bot_on_experience)
     bot.on('whisper', bot_on_whisper)
   }
 
-  function after_spawn () {
+  function after_spawn() {
     ConfigureIds()
     ConfigureMovements()
     ConfigureEvents()
     switchStateTo(CStateAfterSpawn)
   }
 
-  function spawn () {
+  function spawn() {
     console.log(nowStr(), 'Spawned!!!')
     bot
       .waitForChunksToLoad()
@@ -190,22 +206,22 @@ function main () {
       })
   }
 
-  function clearTimer () {
+  function clearTimer() {
     if (timerHandle) {
       clearTimeout(timerHandle)
       timerHandle = null
     }
   }
 
-  function setTimer (ADelay) {
+  function setTimer(ADelay) {
     timerHandle = setTimeout(loop, ADelay)
   }
 
-  function setAgain () {
+  function setAgain() {
     setImmediate(loop)
   }
 
-  function clearStates () {
+  function clearStates() {
     idleState.clear()
     farmingState.clear()
     buildingState.clear()
@@ -228,7 +244,7 @@ function main () {
     }
   }
 
-  function DoIdle () {
+  function DoIdle() {
     switch (idleState.s) {
       case isIdleInit: {
         idleState.idleStartDate = Date().now
@@ -293,14 +309,14 @@ function main () {
     }
   }
 
-  function DoCarpeting () {
+  function DoCarpeting() {
     switch (carpetingState.s) {
       case csCarpetingInit: {
         const posPlayer = bot.entity.position
         const posBeneath = posPlayer.offset(0, -1, 0)
         const blockPlayer = bot.blockAt(posPlayer)
         const blockBeneath = bot.blockAt(posBeneath)
-        if (blockPlayer.type !== air_id) {
+        if (!air_id_set.has(blockPlayer.type)) {
           console.log(
             nowStr(),
             'The block on the player is not air',
@@ -340,7 +356,7 @@ function main () {
               const blockPos = block.position
               const posAbove1 = blockPos.offset(0, 1, 0)
               const blockAbove1 = bot.blockAt(posAbove1)
-              if (blockAbove1.type !== air_id) return false
+              if (!air_id_set.has(blockAbove1.type)) return false
               if (blockPos.y !== carpetingState.blockBeneathY) return false
               const distance = entityPos.distanceTo(posAbove1)
               return (
@@ -360,7 +376,7 @@ function main () {
           if (wasSearchForblocksToCarpetNow === true) {
             // nothing to Carpet, try to find entity items
             carpetingState.maxDistance++
-            if (carpetingState.maxDistance < 60) {
+            if (carpetingState.maxDistance < ArgMaxSeekDistance) {
               // keep current state, search again
             } else {
               console.log(nowStr(), 'Cannot find any more blocks to carpet')
@@ -525,11 +541,11 @@ function main () {
     }
   }
 
-  function xzToHash (v) {
+  function xzToHash(v) {
     return v.x * 65536 + v.z
   }
 
-  function DoFarming () {
+  function DoFarming() {
     switch (farmingState.s) {
       case fsFarmingInit: {
         farmingState.s = fsFindBlocksToHarvestInit
@@ -696,13 +712,12 @@ function main () {
               const blockPos = block.position
               const posAbove1 = blockPos.offset(0, 1, 0)
               const blockAbove1 = bot.blockAt(posAbove1)
-              if (blockAbove1.type !== air_id) return false
+              if (!air_id_set.has(blockAbove1.type)) return false
               const distanceToSow = entityPos.distanceTo(blockAbove1.position)
               if (
                 distanceToSow < CMinDistanceToPlaceSeed ||
                 distanceToSow > farmingState.maxDistance
-              )
-                return false
+              ) return false
               const h = xzToHash(blockPos)
               if (farmingState.blocksHarvestedAfterMove !== null) {
                 if (farmingState.blocksHarvestedAfterMove.has(h)) return false
@@ -844,7 +859,7 @@ function main () {
           const distance = e.position.distanceTo(bot.entity.position)
           if (
             distance > CMinItemFarmDistanceToGo &&
-            distance < farmingState.maxDistance * 4
+            distance < farmingState.maxDistance * 4 // only collect nearby items, don't go too far
           ) {
             console.log(
               nowStr(),
@@ -883,11 +898,13 @@ function main () {
       }
       case fsIncreaseMaxDistance: {
         farmingState.maxDistance++
-        if (farmingState.maxDistance > CMaxDistance) {
+        if (farmingState.maxDistance > ArgMaxSeekDistance) {
           farmingState.s = fsFarmingInit
         } else {
-          if (farmingState.maxDistance > 10) farmingState.maxDistance += 4
-          if (farmingState.maxDistance > 20) farmingState.maxDistance += 8
+          if (ArgMaxSeekDistance > 30) {
+            if (farmingState.maxDistance > 10) { farmingState.maxDistance += 4 } else
+              if (farmingState.maxDistance > 20) { farmingState.maxDistance += 8 }
+          }
           console.log(
             nowStr(),
             'Farming MaxDistance set to',
@@ -913,19 +930,19 @@ function main () {
   *************************************************************************/
 
   let buildingState = {
-    clear: function () {}
+    clear: function () { }
   }
 
-  function DoBuilding () {}
+  function DoBuilding() { }
 
-  function switchStateTo (ANewState) {
+  function switchStateTo(ANewState) {
     clearStates()
     clearTimer()
     CurrentState = ANewState
     setAgain()
   }
 
-  function bot_on_whisper (username, message, rawMessage) {
+  function bot_on_whisper(username, message, rawMessage) {
     if (username === bot.username) return
     switch (message) {
       case 'idle':
@@ -971,7 +988,7 @@ function main () {
     }
   }
 
-  function loop () {
+  function loop() {
     switch (CurrentState) {
       case CStateIdle:
         DoIdle()

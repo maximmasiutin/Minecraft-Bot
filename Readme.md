@@ -8,7 +8,8 @@ This is a very simple bot that demonstrates the use of the mineflayer library.
 
 ## Watch Demos
 
- - Farming (plant/harvest wheat): https://youtu.be/RVaNNiG96-M
+ - Farming (plant/harvest wheat) on open terrain: https://youtu.be/RVaNNiG96-M
+ - Farming with obstacle avoidance: https://youtu.be/8u5v3z2hx2k
  - Carpeting (fill surface with a white carpet): https://youtu.be/tKTukPgVf7Q
 
 ## Run The Bot
@@ -27,7 +28,7 @@ For example, if your bot has username "Glomik", use in Minecraft "/tell Glomik f
 
 ## License 
 
-This program is gistributed under the terms of GNU GPL v3.
+This program is distributed under the terms of GNU GPL v3.
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
