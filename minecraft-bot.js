@@ -16,7 +16,7 @@ Watch demos:
 
 Run the bot:
 
- - node minecraft-bot.js <username> <server-version> <server-ip> [server-port] [max-seek-distance]
+ - node minecraft-bot.js <username> <server-version> <server-ip> [server-port] [max-seek-distance] [initial-state]
 
 Control the bot:
 
@@ -32,11 +32,19 @@ Control the bot:
 'use strict'
 
 function main() {
+
+  const CStateSpawned = 1
+  const CStateIdle = 2
+  const CStateFarming = 3
+  const CStateBuilding = 4
+  const CStateCarpeting = 5
+
   let ArgUsername = 'user'
   let ArgVersion = '1.16.5'
   let ArgHost = '127.0.0.1'
   let ArgPort = 25565
   let ArgMaxSeekDistance = 70;
+  let ArgStateAfterSpawn = CStateIdle
 
   const { Vec3 } = require('vec3')
   const mineflayer = require('mineflayer')
@@ -48,19 +56,13 @@ function main() {
   const CFindBlocksToReturnFarmingToHarvest = 128
   const CFindBlocksToReturnFarmingToSow = 128
 
-  const CStateIdle = 1
-  const CStateFarming = 2
-  const CStateBuilding = 3
-  const CStateCarpeting = 4
-
-  const CStateAfterSpawn = CStateIdle
-
   let CurrentState = null
   let timerHandle = null
 
   const CMoveTimeout = 100
   const CWaitForCropsToGrowTimeout = 10000
   const CWaitIdleTimeout = 3000
+  const CAfterSpawnTimeout = 1000
 
   const CWheatGrownMetadata = 7
 
@@ -87,6 +89,12 @@ function main() {
   const faceVectorNorth = new Vec3(0, 0, -1)
   const faceVectorEast = new Vec3(1, 0, 0)
   const faceVectorWest = new Vec3(-1, 0, 0)
+ 
+  let ValidInitialStates = new Set()
+  ValidInitialStates.add(CStateIdle)
+  ValidInitialStates.add(CStateFarming)
+  ValidInitialStates.add(CStateBuilding)
+  ValidInitialStates.add(CStateCarpeting)
 
   if (process.argv.length > 2) {
     ArgUsername = process.argv[2]
@@ -101,13 +109,16 @@ function main() {
   }
 
   if (process.argv.length > 5) {
-    ArgPort = process.argv[5]
+    ArgPort = parseInt(process.argv[5])
   }
 
   if (process.argv.length > 6) {
-    ArgMaxSeekDistance = process.argv[6]
+    ArgMaxSeekDistance = parseInt(process.argv[6])
   }
 
+  if (process.argv.length > 7) {
+    ArgStateAfterSpawn = parseInt(process.argv[7])
+  }
 
   createBotInstance()
 
@@ -117,7 +128,7 @@ function main() {
   }
 
   function createBotInstance() {
-    console.log(nowStr(), 'Username', ArgUsername, 'Version', ArgVersion, 'Host', ArgHost, 'Port', ArgPort, 'MaxSeekDistance', ArgMaxSeekDistance)
+    console.log(nowStr(), 'Username', ArgUsername, 'Version', ArgVersion, 'Host', ArgHost, 'Port', ArgPort, 'MaxSeekDistance', ArgMaxSeekDistance, 'StateAfterSpawn', ArgStateAfterSpawn)
 
     try {
       bot = mineflayer.createBot({
@@ -137,6 +148,8 @@ function main() {
     bot.loadPlugin(pathfinder)
     bot.on('error', bot_on_error)
     bot.once('spawn', spawn)
+    bot.once('login', login)
+    bot.once('forcedMove', initialMove)
   }
 
   function bot_on_error(e) {
@@ -189,16 +202,32 @@ function main() {
     ConfigureIds()
     ConfigureMovements()
     ConfigureEvents()
-    switchStateTo(CStateAfterSpawn)
+    if (ValidInitialStates.has(ArgStateAfterSpawn))
+    {
+        switchStateTo(ArgStateAfterSpawn)
+    } else
+    {
+        console.log(nowStr(), 'Unknown initial state', ArgStateAfterSpawn)
+        process.exit(1)
+    }
+  }
+
+  function initialMove() {
+    console.log(nowStr(), 'Start coordinates', bot.entity.position)
+  }
+
+  function login() {
+    console.log(nowStr(), 'Login complete')
   }
 
   function spawn() {
-    console.log(nowStr(), 'Spawned!!!')
+    console.log(nowStr(), 'Spawned')
     bot
       .waitForChunksToLoad()
       .then(() => {
-        console.log(nowStr(), 'Chunks loaded!!!')
-        setImmediate(after_spawn)
+        console.log(nowStr(), 'Chunks loaded')
+        CurrentState = CStateSpawned
+        setTimer(CAfterSpawnTimeout)
       })
       .catch(err => {
         console.log(nowStr(), 'Could not load chunks', err)
@@ -281,7 +310,7 @@ function main() {
                                   CARPETING
   *************************************************************************/
 
-  const CMaxDistanceToPlaceCarpet = 5
+  const CMaxDistanceToPlaceCarpet = 4
   const CMinDistanceToPlaceCarpet = 2
 
   const csCarpetingInit = 1
@@ -315,7 +344,21 @@ function main() {
         const posPlayer = bot.entity.position
         const posBeneath = posPlayer.offset(0, -1, 0)
         const blockPlayer = bot.blockAt(posPlayer)
+        if (blockPlayer === null) {
+          console.log(nowStr(), "Null block at player's position", posPlayer)
+          process.exit(1)
+        }
         const blockBeneath = bot.blockAt(posBeneath)
+        if (blockBeneath === null) {
+          console.log(nowStr(), "Null block beneath the player", posBeneath)
+          process.exit(1)
+        }
+        if (blockPlayer.type === white_carpet_id) {
+          bot.chat(`I am already standing on a carpet; I'd like to start carpeting from standing on a clean surface`)
+          console.log(nowStr(), 'Stands on a carpet at', posPlayer, 'Changing state to idle')
+          switchStateTo(CStateIdle)
+          break
+        }
         if (!air_id_set.has(blockPlayer.type)) {
           console.log(
             nowStr(),
@@ -344,7 +387,9 @@ function main() {
         if (carpetingState.blocksToCarpet.length === 0) {
           console.log(
             nowStr(),
-            'Finding blocks to carpet at distance',
+            'Finding blocks to carpet of type', carpetingState.blockBeneathType,
+            'of Y', carpetingState.blockBeneathY,
+            'at distance',
             carpetingState.maxDistance
           )
           carpetingState.blocksToCarpet = bot.findBlocks({
@@ -990,6 +1035,9 @@ function main() {
 
   function loop() {
     switch (CurrentState) {
+      case CStateSpawned:
+        after_spawn()
+        break
       case CStateIdle:
         DoIdle()
         break
@@ -1003,7 +1051,7 @@ function main() {
         DoCarpeting()
         break
       default:
-        console.log(nowStr(), 'Unknown state!!!')
+        console.log(nowStr(), 'Unknown state')
         process.exit(1)
     }
   }
