@@ -276,7 +276,7 @@ function main() {
   function DoIdle() {
     switch (idleState.s) {
       case isIdleInit: {
-        idleState.idleStartDate = Date().now
+        idleState.idleStartDate = Date.now()
         idleState.s = isIdleWait
         setAgain()
         break
@@ -529,7 +529,7 @@ function main() {
         break
       }
       case csMovingToCarpet: {
-        console.log(nowStr(), 'should never enter csMovingToHarvest')
+        console.log(nowStr(), 'should never enter csMovingToCarpet')
         process.exit(1)
         break
       }
@@ -993,8 +993,8 @@ function main() {
       case 'idle':
       case 'stop':
         if (CurrentState === CStateIdle) {
-          const now = Date().now()
-          const idleDuration = Math.round(now - idleStartDate)
+          const now = Date.now()
+          const idleDuration = Math.round(now - idleState.idleStartDate)
           const stringToWhisper = `I am already idle for ${idleDuration} seconds`
           console.log(nowStr(), 'Whiper: ', username, stringToWhisper)
           bot.whisper(username, stringToWhisper)

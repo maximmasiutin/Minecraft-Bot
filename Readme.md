@@ -22,7 +22,7 @@ npm install --save mineflayer-pathfinder
 
 ## Run The Bot
 
- - `node minecraft-bot.js <username> <server-version> <server-ip> <server-port>`
+ - `node minecraft-bot.js <username> <server-version> <server-ip> [server-port] [max-seek-distance] [initial-state]`
 
 ## Control The Bot
 
